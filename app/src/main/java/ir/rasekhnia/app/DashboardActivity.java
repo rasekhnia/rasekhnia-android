@@ -14,6 +14,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.GridLayout;
+import android.content.SharedPreferences;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -29,6 +30,7 @@ public class DashboardActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private JSONObject config;
     private int generation=0;
+    private static final String CACHE_KEY="dashboard_config_json";
     private int dp(float n){return (int)(getResources().getDisplayMetrics().density*n+.5f);}
     private int color(String key, int fallback){try{return Color.parseColor(config.getString(key));}catch(Exception e){return fallback;}}
     private String value(String key,String fallback){return config==null?fallback:config.optString(key,fallback);}
@@ -89,11 +91,15 @@ public class DashboardActivity extends Activity {
         boolean showIcons=config!=null&&config.optBoolean("show_icons",true);
         boolean showDescriptions=config==null||config.optBoolean("show_descriptions",true);
         GridLayout grid=new GridLayout(this);
+        grid.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         grid.setColumnCount(columns);
         grid.setUseDefaultMargins(false);
         root.addView(grid,new LinearLayout.LayoutParams(-1,-2));
-        int width=getResources().getDisplayMetrics().widthPixels-dp(40);
-        int tileWidth=(width-dp(gap)*(columns-1))/columns;
+        // Reserve equal-width columns across the entire available content width.
+        int screenWidth=getResources().getDisplayMetrics().widthPixels;
+        int availableWidth=Math.max(dp(180),screenWidth-dp(40));
+        int gapPx=dp(gap);
+        int tileWidth=(availableWidth-gapPx*(columns-1))/columns;
         int count=tiles==null?defaults.length:Math.min(tiles.length(),60);
         int visible=0;
         for(int i=0;i<count;i++){
@@ -105,11 +111,12 @@ public class DashboardActivity extends Activity {
             String icon=t==null?"grid":t.optString("icon","grid");
             if(!(url.startsWith("https://rasekhnia.ir/")||url.startsWith("https://www.rasekhnia.ir/")))url="https://rasekhnia.ir/";
             LinearLayout panel=tile(title,subtitle,url,icon,tileColor,radius,scale,height,showIcons,showDescriptions);
-            GridLayout.LayoutParams lp=new GridLayout.LayoutParams();
-            lp.width=tileWidth-(visible%columns==columns-1?0:dp(gap));
+            GridLayout.LayoutParams lp=new GridLayout.LayoutParams(
+                GridLayout.spec(visible/columns),GridLayout.spec(visible%columns));
+            lp.width=tileWidth;
             lp.height=dp(height);
-            lp.bottomMargin=dp(gap);
-            if(visible%columns!=columns-1)lp.rightMargin=dp(gap);
+            lp.bottomMargin=gapPx;
+            if(visible%columns<columns-1)lp.rightMargin=gapPx;
             grid.addView(panel,lp);
             visible++;
         }
@@ -124,9 +131,20 @@ public class DashboardActivity extends Activity {
             conn=(HttpURLConnection)new URL("https://rasekhnia.ir/wp-json/rki-android/v1/config").openConnection();conn.setConnectTimeout(8000);conn.setReadTimeout(8000);
             if(conn.getResponseCode()!=200)return;
             ByteArrayOutputStream bytes=new ByteArrayOutputStream();try(InputStream in=conn.getInputStream()){byte[] buf=new byte[4096];int n;while((n=in.read(buf))!=-1){if(bytes.size()+n>131072)return;bytes.write(buf,0,n);}}
-            JSONObject received=new JSONObject(new String(bytes.toByteArray(),StandardCharsets.UTF_8));handler.post(()->{if(!isFinishing()){config=received;render();}});
+            JSONObject received=new JSONObject(new String(bytes.toByteArray(),StandardCharsets.UTF_8));handler.post(()->{if(!isFinishing()){
+                getSharedPreferences("rki_dashboard",MODE_PRIVATE).edit()
+                    .putString(CACHE_KEY,received.toString()).apply();
+                if(config==null || !config.toString().equals(received.toString())){
+                    config=received;render();
+                }
+            }});
         }catch(Exception ignored){}finally{if(conn!=null)conn.disconnect();}}).start();
     }
-    @Override public void onCreate(Bundle state){super.onCreate(state);render();refresh();}
+    @Override public void onCreate(Bundle state){
+        super.onCreate(state);
+        String cached=getSharedPreferences("rki_dashboard",MODE_PRIVATE).getString(CACHE_KEY,null);
+        if(cached!=null){try{config=new JSONObject(cached);}catch(Exception ignored){}}
+        render();refresh();
+    }
     @Override protected void onResume(){super.onResume();if(config!=null)refresh();}
 }
