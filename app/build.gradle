@@ -1,6 +1,4 @@
-plugins {
-    id 'com.android.application'
-}
+plugins { id 'com.android.application' }
 android {
     namespace 'ir.rasekhnia.app'
     compileSdk 35
@@ -8,8 +6,8 @@ android {
         applicationId 'ir.rasekhnia.app.beta'
         minSdk 23
         targetSdk 35
-        versionCode 7
-        versionName '1.5.1'
+        versionCode 9
+        versionName '1.6.0'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

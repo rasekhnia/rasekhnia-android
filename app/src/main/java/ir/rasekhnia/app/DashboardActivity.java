@@ -2,9 +2,8 @@ package ir.rasekhnia.app;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Color;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -12,139 +11,61 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
-import android.widget.ImageView;
+import android.widget.FrameLayout;
 import android.widget.GridLayout;
-import android.content.SharedPreferences;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.io.InputStream;
-import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 
 public class DashboardActivity extends Activity {
-    private final Handler handler = new Handler(Looper.getMainLooper());
+    private static final String HOME="https://rasekhnia.ir/";
+    private final Handler handler=new Handler(Looper.getMainLooper());
     private JSONObject config;
-    private int generation=0;
-    private static final String CACHE_KEY="dashboard_config_json";
-    private int dp(float n){return (int)(getResources().getDisplayMetrics().density*n+.5f);}
-    private int color(String key, int fallback){try{return Color.parseColor(config.getString(key));}catch(Exception e){return fallback;}}
-    private String value(String key,String fallback){return config==null?fallback:config.optString(key,fallback);}
-    private GradientDrawable bg(int color,int radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d;}
-    private TextView label(String content,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(content);t.setTextSize(size);t.setTextColor(color);t.setGravity(Gravity.CENTER);t.setTextDirection(View.TEXT_DIRECTION_RTL);if(bold)t.setTypeface(null,Typeface.BOLD);return t;}
-    private void open(String url){Intent i=new Intent(this,MainActivity.class);i.putExtra("target_url",url);startActivity(i);}
-    private String symbol(String icon) {
-        switch(icon){
-            case "users": return "♙";
-            case "scale": return "⚖";
-            case "handshake": return "♧";
-            case "file-text": return "▤";
-            case "book-open": return "▣";
-            case "graduation-cap": return "✦";
-            case "tv": return "▣";
-            case "headphones": return "☎";
-            case "calendar-days": return "▦";
-            case "shopping-bag": return "▧";
-            case "bell": return "♧";
-            default: return "◆";
-        }
-    }
-    private LinearLayout tile(String title,String description,String url,String icon,int tileColor,int radius,int scale,int height,boolean icons,boolean descriptions){
-        LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setGravity(Gravity.CENTER);panel.setPadding(dp(8),dp(9),dp(8),dp(9));
-        panel.setBackground(bg(tileColor,radius));
-        if(icons)panel.addView(label(symbol(icon),Math.max(19,25*scale/100),color("accent",Color.CYAN),true));
-        panel.addView(label(title,Math.max(12,17*scale/100),Color.WHITE,true));
-        if(descriptions&&!description.isEmpty()){
-            TextView sub=label(description,Math.max(9,11*scale/100),Color.rgb(190,211,223),false);
-            LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,-2);sp.topMargin=dp(4);panel.addView(sub,sp);
-        }
-        panel.setMinimumHeight(dp(height));
-        panel.setOnClickListener(v->open(url));
-        return panel;
-    }
+    private FrameLayout shell;
+    private LinearLayout drawer;
+    private int activeTab=0;
+    private int dp(float x){return (int)(getResources().getDisplayMetrics().density*x+.5f);}
+    private int color(String key,int fallback){try{return Color.parseColor(config.getString(key));}catch(Exception e){return fallback;}}
+    private String val(String key,String fallback){return config==null?fallback:config.optString(key,fallback);}
+    private GradientDrawable shape(int color,int radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d;}
+    private TextView text(String s,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextColor(color);t.setTextSize(size);t.setGravity(Gravity.CENTER_VERTICAL|Gravity.RIGHT);t.setTextDirection(View.TEXT_DIRECTION_RTL);if(bold)t.setTypeface(null,Typeface.BOLD);return t;}
+    private void open(String url){if(!url.startsWith("https://rasekhnia.ir/")&&!url.startsWith("https://www.rasekhnia.ir/"))url=HOME;Intent i=new Intent(this,MainActivity.class);i.putExtra("target_url",url);startActivity(i);}
+    private LinearLayout vertical(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);l.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);return l;}
+    private TextView action(String label,int size,int fg,int bg,int radius){TextView t=text(label,size,fg,true);t.setGravity(Gravity.CENTER);t.setBackground(shape(bg,radius));return t;}
+    private String glyph(String key){switch(key){case "scale":return "⚖";case "users":return "♙";case "file-text":return "▤";case "book-open":return "▣";case "graduation-cap":return "✦";case "tv":return "▣";case "headphones":return "☎";case "calendar-days":return "▦";case "shopping-bag":return "▧";case "bell":return "♢";case "handshake":return "♧";default:return "◆";}}
+    private JSONArray items(){JSONArray a=config==null?null:config.optJSONArray("tiles");if(a!=null)return a;JSONArray defaults=new JSONArray();String[][] data={{"قراردادساز","تنظیم قرارداد حرفه‌ای","file-text",HOME},{"دادخواست و شکوائیه","تنظیم اوراق قضایی","scale",HOME},{"مطالعه پرونده","بررسی تخصصی اسناد","book-open",HOME},{"چکاپ حقوقی","ارزیابی کسب‌وکار","users",HOME},{"مقالات حقوقی","آموزش و آگاهی","graduation-cap",HOME},{"حساب کاربری","مدیریت سفارش‌ها","users",HOME+"my-account/"}};for(String[] d:data){JSONObject o=new JSONObject();try{o.put("title",d[0]);o.put("subtitle",d[1]);o.put("icon",d[2]);o.put("url",d[3]);}catch(Exception ignored){}defaults.put(o);}return defaults;}
+    private LinearLayout card(JSONObject o,int cardColor,int accent,int radius,boolean compact){LinearLayout c=vertical();c.setPadding(dp(12),dp(13),dp(12),dp(12));c.setBackground(shape(cardColor,radius));c.setGravity(Gravity.CENTER_VERTICAL);String title=o.optString("title","خدمات حقوقی"),desc=o.optString("subtitle","");boolean showIcons=config==null||config.optBoolean("show_icons",true),showDesc=config==null||config.optBoolean("show_descriptions",true);if(showIcons){TextView ico=text(glyph(o.optString("icon","grid")),compact?23:27,accent,true);c.addView(ico);}TextView name=text(title,compact?13:15,Color.WHITE,true);name.setMaxLines(2);c.addView(name);if(showDesc&&!desc.isEmpty()){TextView sub=text(desc,11,Color.rgb(184,211,225),false);sub.setMaxLines(2);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=dp(5);c.addView(sub,p);}c.setOnClickListener(v->open(o.optString("url",HOME)));return c;}
     private void render(){
-        final int navy=color("background",Color.rgb(16,31,52)),tileColor=color("card",Color.rgb(30,57,81)),cyan=color("accent",Color.rgb(105,219,218));
-        int scale=config==null?100:config.optInt("font_scale",100),radius=config==null?16:config.optInt("corner_radius",16);
+        int navy=color("background",0xFF101F34),cardColor=color("card",0xFF1E3951),accent=color("accent",0xFF69DBDA),radius=config==null?16:config.optInt("corner_radius",16);
         getWindow().setStatusBarColor(navy);getWindow().setNavigationBarColor(navy);
-        ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(navy);
-        LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);root.setPadding(dp(20),dp(30),dp(20),dp(20));
-        String logo=value("logo_url","");
-        if(logo.startsWith("https://rasekhnia.ir/")||logo.startsWith("https://www.rasekhnia.ir/"))loadLogo(logo,root,++generation);
-        root.addView(label("⚖  "+value("name","راسخ‌نیا"),29*scale/100,Color.WHITE,true));
-        if(config==null||config.optBoolean("show_subtitle",true)){
-            TextView subtitle=label(value("subtitle","سامانه هوشمند خدمات حقوقی"),15*scale/100,cyan,false);LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,-2);sp.bottomMargin=dp(22);root.addView(subtitle,sp);
-        }
-        if(config==null||config.optBoolean("show_welcome",true)){
-            TextView welcome=label(value("welcome","خدمات حقوقی، آموزش و مدیریت پرونده‌ها"),16*scale/100,Color.WHITE,false);welcome.setPadding(dp(12),dp(20),dp(12),dp(20));welcome.setBackground(bg(tileColor,radius));LinearLayout.LayoutParams wp=new LinearLayout.LayoutParams(-1,-2);wp.bottomMargin=dp(18);root.addView(welcome,wp);
-        }
-        String[][] defaults={{"مراجعین و مشتریان","سفارش‌ها، قراردادها و پرونده‌ها","https://rasekhnia.ir/my-account/"},{"وکلا","ورود به حساب و خدمات وکالت","https://rasekhnia.ir/my-account/"},{"بازاریابان","ورود به حساب همکاری و فروش","https://rasekhnia.ir/my-account/"},{"خدمات حقوقی","قراردادها، دادخواست‌ها و خدمات","https://rasekhnia.ir/"},{"مقالات حقوقی","مطالعه و آموزش","https://rasekhnia.ir/"},{"سایر امکانات","تلویزیون حقوقی، کلاس‌ها و سایت","https://rasekhnia.ir/"}};
-        JSONArray tiles=config==null?null:config.optJSONArray("tiles");
-        String layout=value("layout","list");
-        int columns=layout.equals("grid3")?3:layout.equals("grid2")?2:1;
-        int gap=config==null?10:Math.min(32,Math.max(0,config.optInt("tile_gap",10)));
-        int height=config==null?94:Math.min(240,Math.max(72,config.optInt("card_height",112)));
-        boolean showIcons=config!=null&&config.optBoolean("show_icons",true);
-        boolean showDescriptions=config==null||config.optBoolean("show_descriptions",true);
-        GridLayout grid=new GridLayout(this);
-        grid.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
-        grid.setColumnCount(columns);
-        grid.setUseDefaultMargins(false);
-        root.addView(grid,new LinearLayout.LayoutParams(-1,-2));
-        // Reserve equal-width columns across the entire available content width.
-        int screenWidth=getResources().getDisplayMetrics().widthPixels;
-        int availableWidth=Math.max(dp(180),screenWidth-dp(40));
-        int gapPx=dp(gap);
-        int tileWidth=(availableWidth-gapPx*(columns-1))/columns;
-        int count=tiles==null?defaults.length:Math.min(tiles.length(),60);
-        int visible=0;
-        for(int i=0;i<count;i++){
-            JSONObject t=tiles==null?null:tiles.optJSONObject(i);
-            if(t!=null&&!t.optBoolean("enabled",true))continue;
-            String title=t==null?defaults[i][0]:t.optString("title",defaults[Math.min(i,5)][0]);
-            String subtitle=t==null?defaults[i][1]:t.optString("subtitle","");
-            String url=t==null?defaults[i][2]:t.optString("url","https://rasekhnia.ir/");
-            String icon=t==null?"grid":t.optString("icon","grid");
-            if(!(url.startsWith("https://rasekhnia.ir/")||url.startsWith("https://www.rasekhnia.ir/")))url="https://rasekhnia.ir/";
-            LinearLayout panel=tile(title,subtitle,url,icon,tileColor,radius,scale,height,showIcons,showDescriptions);
-            GridLayout.LayoutParams lp=new GridLayout.LayoutParams(
-                GridLayout.spec(visible/columns),GridLayout.spec(visible%columns));
-            lp.width=tileWidth;
-            lp.height=dp(height);
-            lp.bottomMargin=gapPx;
-            if(visible%columns<columns-1)lp.rightMargin=gapPx;
-            grid.addView(panel,lp);
-            visible++;
-        }
-        if(config!=null&&config.optBoolean("show_footer",true))root.addView(label(value("footer_text","© راسخ‌نیا"),12*scale/100,Color.LTGRAY,false));
-        scroll.addView(root);setContentView(scroll);
+        shell=new FrameLayout(this);shell.setBackgroundColor(0xFFF4F8FA);
+        LinearLayout page=vertical();page.setBackgroundColor(0xFFF4F8FA);shell.addView(page,new FrameLayout.LayoutParams(-1,-1));
+        LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);header.setPadding(dp(18),dp(14),dp(18),dp(14));header.setBackgroundColor(navy);
+        TextView menu=action("☰",25,Color.WHITE,0xFF1E3951,12);header.addView(menu,new LinearLayout.LayoutParams(dp(46),dp(46)));menu.setOnClickListener(v->showDrawer());
+        LinearLayout brand=vertical();brand.setPadding(dp(14),0,dp(14),0);brand.addView(text(val("name","راسخ‌نیا"),21,Color.WHITE,true));brand.addView(text(val("subtitle","سامانه هوشمند خدمات حقوقی"),11,accent,false));header.addView(brand,new LinearLayout.LayoutParams(0,-2,1));
+        TextView notification=action("♢",23,accent,0xFF1E3951,12);header.addView(notification,new LinearLayout.LayoutParams(dp(46),dp(46)));notification.setOnClickListener(v->open(HOME));page.addView(header);
+        ScrollView sc=new ScrollView(this);sc.setFillViewport(true);page.addView(sc,new LinearLayout.LayoutParams(-1,0,1));LinearLayout body=vertical();body.setPadding(dp(18),dp(18),dp(18),dp(22));sc.addView(body);
+        LinearLayout hero=vertical();hero.setPadding(dp(18),dp(20),dp(18),dp(20));hero.setBackground(shape(navy,20));hero.addView(text("خوش آمدید به راسخ‌نیا",13,accent,true));TextView title=text(val("welcome","راهکارهای حقوقی، در دسترس شما"),22,Color.WHITE,true);LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(-1,-2);tp.topMargin=dp(9);hero.addView(title,tp);TextView intro=text("از تنظیم قرارداد تا مدیریت پرونده، همه در یک مکان",12,0xFFD0E0E9,false);LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,-2);ip.topMargin=dp(8);hero.addView(intro,ip);TextView go=action("مشاهده همه خدمات  ←",13,navy,accent,14);LinearLayout.LayoutParams gp=new LinearLayout.LayoutParams(-2,dp(40));gp.topMargin=dp(16);hero.addView(go,gp);go.setPadding(dp(16),0,dp(16),0);go.setOnClickListener(v->open(HOME));body.addView(hero);
+        TextView search=action("⌕   جست‌وجوی خدمات و مقالات",14,0xFF526D7D,Color.WHITE,14);LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,dp(52));sp.topMargin=dp(15);body.addView(search,sp);search.setOnClickListener(v->open(HOME+"?s="));
+        TextView heading=text("خدمات پرکاربرد",19,0xFF183449,true);LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(-1,-2);hp.topMargin=dp(22);hp.bottomMargin=dp(12);body.addView(heading,hp);
+        String layout=val("layout","grid2");int cols=layout.equals("grid3")?3:layout.equals("list")?1:2;int gap=config==null?10:Math.max(4,Math.min(24,config.optInt("tile_gap",10)));
+        GridLayout grid=new GridLayout(this);grid.setColumnCount(cols);grid.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);grid.setUseDefaultMargins(false);body.addView(grid,new LinearLayout.LayoutParams(-1,-2));
+        JSONArray tiles=items();int shown=0;for(int i=0;i<Math.min(tiles.length(),60);i++){JSONObject o=tiles.optJSONObject(i);if(o==null||!o.optBoolean("enabled",true))continue;final int index=shown++;GridLayout.LayoutParams lp=new GridLayout.LayoutParams(GridLayout.spec(index/cols),GridLayout.spec(index%cols,1f));lp.width=0;lp.height=dp(cols==1?100:cols==3?116:132);lp.setGravity(Gravity.FILL);lp.bottomMargin=dp(gap);if(index%cols<cols-1)lp.leftMargin=dp(gap);grid.addView(card(o,cardColor,accent,radius,cols==3),lp);}
+        TextView education=text("مجله و آموزش حقوقی",18,0xFF183449,true);LinearLayout.LayoutParams ep=new LinearLayout.LayoutParams(-1,-2);ep.topMargin=dp(16);ep.bottomMargin=dp(10);body.addView(education,ep);
+        TextView magazine=action("▣  مقالات، دوره‌ها و تلویزیون حقوقی     ←",13,0xFF17546A,0xFFE1F0F2,14);magazine.setPadding(dp(12),0,dp(12),0);body.addView(magazine,new LinearLayout.LayoutParams(-1,dp(65)));magazine.setOnClickListener(v->open(HOME));
+        if(config!=null&&config.optBoolean("show_footer",true)){TextView footer=text(val("footer_text","© راسخ‌نیا"),11,0xFF78909C,false);footer.setGravity(Gravity.CENTER);LinearLayout.LayoutParams fp=new LinearLayout.LayoutParams(-1,-2);fp.topMargin=dp(20);body.addView(footer,fp);}
+        LinearLayout nav=new LinearLayout(this);nav.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);nav.setBackgroundColor(Color.WHITE);nav.setPadding(dp(4),dp(8),dp(4),dp(8));String[] tabs={"⌂\nخانه","▦\nخدمات","▣\nآموزش","♙\nحساب","☰\nبیشتر"};for(int i=0;i<tabs.length;i++){final int idx=i;TextView t=action(tabs[i],12,i==activeTab?0xFF087F91:0xFF607D8B,i==activeTab?0xFFE2F4F5:Color.WHITE,12);t.setLineSpacing(dp(3),1);LinearLayout.LayoutParams np=new LinearLayout.LayoutParams(0,dp(56),1);np.leftMargin=dp(2);np.rightMargin=dp(2);nav.addView(t,np);t.setOnClickListener(v->{activeTab=idx;if(idx==0){render();}else if(idx==1)open(HOME);else if(idx==2)open(HOME);else if(idx==3)open(HOME+"my-account/");else showDrawer();});}page.addView(nav);
+        setContentView(shell);
     }
-    private void loadLogo(String address,LinearLayout parent,int id){
-        new Thread(()->{HttpURLConnection conn=null;try{conn=(HttpURLConnection)new URL(address).openConnection();conn.setConnectTimeout(7000);conn.setReadTimeout(7000);Bitmap bitmap;try(InputStream in=conn.getInputStream()){bitmap=BitmapFactory.decodeStream(in);}if(bitmap!=null)handler.post(()->{if(id!=generation||isFinishing())return;ImageView img=new ImageView(this);img.setImageBitmap(bitmap);img.setScaleType(ImageView.ScaleType.FIT_CENTER);parent.addView(img,0,new LinearLayout.LayoutParams(-1,dp(90)));});}catch(Exception ignored){}finally{if(conn!=null)conn.disconnect();}}).start();
-    }
-    private void refresh(){
-        new Thread(()->{HttpURLConnection conn=null;try{
-            conn=(HttpURLConnection)new URL("https://rasekhnia.ir/wp-json/rki-android/v1/config").openConnection();conn.setConnectTimeout(8000);conn.setReadTimeout(8000);
-            if(conn.getResponseCode()!=200)return;
-            ByteArrayOutputStream bytes=new ByteArrayOutputStream();try(InputStream in=conn.getInputStream()){byte[] buf=new byte[4096];int n;while((n=in.read(buf))!=-1){if(bytes.size()+n>131072)return;bytes.write(buf,0,n);}}
-            JSONObject received=new JSONObject(new String(bytes.toByteArray(),StandardCharsets.UTF_8));handler.post(()->{if(!isFinishing()){
-                getSharedPreferences("rki_dashboard",MODE_PRIVATE).edit()
-                    .putString(CACHE_KEY,received.toString()).apply();
-                if(config==null || !config.toString().equals(received.toString())){
-                    config=received;render();
-                }
-            }});
-        }catch(Exception ignored){}finally{if(conn!=null)conn.disconnect();}}).start();
-    }
-    @Override public void onCreate(Bundle state){
-        super.onCreate(state);
-        String cached=getSharedPreferences("rki_dashboard",MODE_PRIVATE).getString(CACHE_KEY,null);
-        if(cached!=null){try{config=new JSONObject(cached);}catch(Exception ignored){}}
-        render();refresh();
-    }
-    @Override protected void onResume(){super.onResume();if(config!=null)refresh();}
+    private void showDrawer(){if(drawer!=null&&drawer.getParent()!=null){shell.removeView(drawer);drawer=null;return;}drawer=vertical();drawer.setBackgroundColor(Color.WHITE);drawer.setPadding(dp(18),dp(30),dp(18),dp(18));FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(dp(285),-1,Gravity.RIGHT);shell.addView(drawer,p);TextView close=action("✕    بستن فهرست",15,0xFF15394B,0xFFE7F1F4,12);drawer.addView(close,new LinearLayout.LayoutParams(-1,dp(50)));close.setOnClickListener(v->{shell.removeView(drawer);drawer=null;});TextView name=text("فهرست راسخ‌نیا",20,0xFF15394B,true);name.setPadding(0,dp(20),0,dp(12));drawer.addView(name);String[][] entries={{"خانه",HOME},{"خدمات حقوقی",HOME},{"قراردادها",HOME},{"مقالات و آموزش",HOME},{"حساب کاربری",HOME+"my-account/"},{"پشتیبانی",HOME+"my-account/"}};for(String[] e:entries){TextView t=text("‹    "+e[0],16,0xFF1A4054,false);t.setPadding(dp(12),dp(13),dp(12),dp(13));drawer.addView(t);t.setOnClickListener(v->open(e[1]));}JSONArray arr=items();for(int i=0;i<Math.min(arr.length(),30);i++){JSONObject o=arr.optJSONObject(i);if(o==null||!o.optBoolean("enabled",true))continue;TextView t=text("•    "+o.optString("title","خدمات"),14,0xFF316277,false);t.setPadding(dp(12),dp(10),dp(12),dp(10));drawer.addView(t);t.setOnClickListener(v->open(o.optString("url",HOME)));}}
+    private void refresh(){new Thread(()->{HttpURLConnection conn=null;try{conn=(HttpURLConnection)new URL("https://rasekhnia.ir/wp-json/rki-android/v1/config").openConnection();conn.setConnectTimeout(8000);conn.setReadTimeout(8000);if(conn.getResponseCode()!=200)return;ByteArrayOutputStream b=new ByteArrayOutputStream();try(InputStream in=conn.getInputStream()){byte[] a=new byte[4096];int n;while((n=in.read(a))!=-1){if(b.size()+n>131072)return;b.write(a,0,n);}}String raw=new String(b.toByteArray(),StandardCharsets.UTF_8);JSONObject received=new JSONObject(raw);getSharedPreferences("dashboard",MODE_PRIVATE).edit().putString("config",raw).apply();handler.post(()->{if(!isFinishing()){config=received;render();}});}catch(Exception ignored){}finally{if(conn!=null)conn.disconnect();}}).start();}
+    @Override public void onCreate(Bundle b){super.onCreate(b);try{config=new JSONObject(getSharedPreferences("dashboard",MODE_PRIVATE).getString("config","{}"));}catch(Exception ignored){}render();refresh();}
+    @Override protected void onResume(){super.onResume();if(shell!=null)refresh();}
 }
