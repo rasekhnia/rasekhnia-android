@@ -150,8 +150,8 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, "دانلود مستقیم ممکن نشد؛ پیوند را در مرورگر باز کنید", Toast.LENGTH_LONG).show();
             }
         });
-        if (savedInstanceState == null) webView.loadUrl(HOME);
-        else if (webView.restoreState(savedInstanceState) == null) webView.loadUrl(HOME);
+        if (savedInstanceState == null) webView.loadUrl(getIntent().getStringExtra("target_url") != null ? getIntent().getStringExtra("target_url") : HOME);
+        else if (webView.restoreState(savedInstanceState) == null) webView.loadUrl(getIntent().getStringExtra("target_url") != null ? getIntent().getStringExtra("target_url") : HOME);
     }
 
     private int dp(int value) { return (int)(getResources().getDisplayMetrics().density * value + .5f); }
@@ -165,7 +165,7 @@ public class MainActivity extends Activity {
         }
     }
     @Override public void onBackPressed() {
-        if (errorPanel.getVisibility() == View.VISIBLE) { errorPanel.setVisibility(View.GONE); webView.loadUrl(HOME); }
+        if (errorPanel.getVisibility() == View.VISIBLE) { errorPanel.setVisibility(View.GONE); webView.loadUrl(getIntent().getStringExtra("target_url") != null ? getIntent().getStringExtra("target_url") : HOME); }
         else if (webView.canGoBack()) webView.goBack();
         else super.onBackPressed();
     }
