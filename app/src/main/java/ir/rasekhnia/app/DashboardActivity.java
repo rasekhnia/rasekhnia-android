@@ -13,6 +13,7 @@ import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.ImageView;
+import android.widget.GridLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -34,11 +35,35 @@ public class DashboardActivity extends Activity {
     private GradientDrawable bg(int color,int radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d;}
     private TextView label(String content,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(content);t.setTextSize(size);t.setTextColor(color);t.setGravity(Gravity.CENTER);t.setTextDirection(View.TEXT_DIRECTION_RTL);if(bold)t.setTypeface(null,Typeface.BOLD);return t;}
     private void open(String url){Intent i=new Intent(this,MainActivity.class);i.putExtra("target_url",url);startActivity(i);}
-    private void tile(LinearLayout root,String title,String description,String url,int tileColor,int radius,int scale){
-        LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);panel.setGravity(Gravity.CENTER);panel.setPadding(dp(12),dp(16),dp(12),dp(16));panel.setBackground(bg(tileColor,radius));
-        panel.addView(label(title,Math.max(14,19*scale/100),Color.WHITE,true));
-        TextView sub=label(description,Math.max(10,13*scale/100),Color.rgb(190,211,223),false);LinearLayout.LayoutParams subParams=new LinearLayout.LayoutParams(-1,-2);subParams.topMargin=dp(5);panel.addView(sub,subParams);
-        LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,dp(94));params.bottomMargin=dp(10);root.addView(panel,params);panel.setOnClickListener(v->open(url));
+    private String symbol(String icon) {
+        switch(icon){
+            case "users": return "♙";
+            case "scale": return "⚖";
+            case "handshake": return "♧";
+            case "file-text": return "▤";
+            case "book-open": return "▣";
+            case "graduation-cap": return "✦";
+            case "tv": return "▣";
+            case "headphones": return "☎";
+            case "calendar-days": return "▦";
+            case "shopping-bag": return "▧";
+            case "bell": return "♧";
+            default: return "◆";
+        }
+    }
+    private LinearLayout tile(String title,String description,String url,String icon,int tileColor,int radius,int scale,int height,boolean icons,boolean descriptions){
+        LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setGravity(Gravity.CENTER);panel.setPadding(dp(8),dp(9),dp(8),dp(9));
+        panel.setBackground(bg(tileColor,radius));
+        if(icons)panel.addView(label(symbol(icon),Math.max(19,25*scale/100),color("accent",Color.CYAN),true));
+        panel.addView(label(title,Math.max(12,17*scale/100),Color.WHITE,true));
+        if(descriptions&&!description.isEmpty()){
+            TextView sub=label(description,Math.max(9,11*scale/100),Color.rgb(190,211,223),false);
+            LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,-2);sp.topMargin=dp(4);panel.addView(sub,sp);
+        }
+        panel.setMinimumHeight(dp(height));
+        panel.setOnClickListener(v->open(url));
+        return panel;
     }
     private void render(){
         final int navy=color("background",Color.rgb(16,31,52)),tileColor=color("card",Color.rgb(30,57,81)),cyan=color("accent",Color.rgb(105,219,218));
@@ -57,13 +82,36 @@ public class DashboardActivity extends Activity {
         }
         String[][] defaults={{"مراجعین و مشتریان","سفارش‌ها، قراردادها و پرونده‌ها","https://rasekhnia.ir/my-account/"},{"وکلا","ورود به حساب و خدمات وکالت","https://rasekhnia.ir/my-account/"},{"بازاریابان","ورود به حساب همکاری و فروش","https://rasekhnia.ir/my-account/"},{"خدمات حقوقی","قراردادها، دادخواست‌ها و خدمات","https://rasekhnia.ir/"},{"مقالات حقوقی","مطالعه و آموزش","https://rasekhnia.ir/"},{"سایر امکانات","تلویزیون حقوقی، کلاس‌ها و سایت","https://rasekhnia.ir/"}};
         JSONArray tiles=config==null?null:config.optJSONArray("tiles");
-        for(int i=0;i<defaults.length;i++){
-            JSONObject t=tiles==null?null:tiles.optJSONObject(i);if(t!=null&&!t.optBoolean("enabled",true))continue;
-            String title=t==null?defaults[i][0]:t.optString("title",defaults[i][0]);
-            String subtitle=t==null?defaults[i][1]:t.optString("subtitle",defaults[i][1]);
-            String url=t==null?defaults[i][2]:t.optString("url",defaults[i][2]);
+        String layout=value("layout","list");
+        int columns=layout.equals("grid3")?3:layout.equals("grid2")?2:1;
+        int gap=config==null?10:Math.min(32,Math.max(0,config.optInt("tile_gap",10)));
+        int height=config==null?94:Math.min(240,Math.max(72,config.optInt("card_height",112)));
+        boolean showIcons=config!=null&&config.optBoolean("show_icons",true);
+        boolean showDescriptions=config==null||config.optBoolean("show_descriptions",true);
+        GridLayout grid=new GridLayout(this);
+        grid.setColumnCount(columns);
+        grid.setUseDefaultMargins(false);
+        root.addView(grid,new LinearLayout.LayoutParams(-1,-2));
+        int width=getResources().getDisplayMetrics().widthPixels-dp(40);
+        int tileWidth=(width-dp(gap)*(columns-1))/columns;
+        int count=tiles==null?defaults.length:Math.min(tiles.length(),60);
+        int visible=0;
+        for(int i=0;i<count;i++){
+            JSONObject t=tiles==null?null:tiles.optJSONObject(i);
+            if(t!=null&&!t.optBoolean("enabled",true))continue;
+            String title=t==null?defaults[i][0]:t.optString("title",defaults[Math.min(i,5)][0]);
+            String subtitle=t==null?defaults[i][1]:t.optString("subtitle","");
+            String url=t==null?defaults[i][2]:t.optString("url","https://rasekhnia.ir/");
+            String icon=t==null?"grid":t.optString("icon","grid");
             if(!(url.startsWith("https://rasekhnia.ir/")||url.startsWith("https://www.rasekhnia.ir/")))url="https://rasekhnia.ir/";
-            tile(root,title,subtitle,url,tileColor,radius,scale);
+            LinearLayout panel=tile(title,subtitle,url,icon,tileColor,radius,scale,height,showIcons,showDescriptions);
+            GridLayout.LayoutParams lp=new GridLayout.LayoutParams();
+            lp.width=tileWidth-(visible%columns==columns-1?0:dp(gap));
+            lp.height=dp(height);
+            lp.bottomMargin=dp(gap);
+            if(visible%columns!=columns-1)lp.rightMargin=dp(gap);
+            grid.addView(panel,lp);
+            visible++;
         }
         if(config!=null&&config.optBoolean("show_footer",true))root.addView(label(value("footer_text","© راسخ‌نیا"),12*scale/100,Color.LTGRAY,false));
         scroll.addView(root);setContentView(scroll);
